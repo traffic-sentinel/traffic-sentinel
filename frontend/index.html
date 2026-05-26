@@ -3,35 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Traffic Sentinel - MVP Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #0f172a; color: white; }
-        h1 { color: #3b82f6; }
-        .card { background: #1e2937; padding: 20px; border-radius: 8px; margin: 15px 0; }
-    </style>
+    <title>Traffic Sentinel | Uganda</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <h1>🚦 Traffic Sentinel</h1>
-    <p><strong>AI Traffic Monitoring System</strong> - Uganda Government Prototype</p>
-    
-    <div class="card">
-        <h2>System Status</h2>
-        <p>✅ Backend Running</p>
-        <p>📹 Video Processing Ready</p>
-        <p>🔍 Object Detection Active</p>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <h1>🚦 Traffic Sentinel</h1>
+                <p>Uganda Road Safety Intelligence</p>
+            </div>
+            <nav>
+                <a href="#" onclick="showSection('dashboard')">Dashboard</a>
+                <a href="#" onclick="showSection('videos')">Video Analysis</a>
+                <a href="#" onclick="showSection('hotspots')">Hotspots</a>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Dashboard Section -->
+            <section id="dashboard-section" class="section active">
+                <h2>📊 Risk Dashboard - Kampala</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Current Risk</h3>
+                        <div class="risk-high">HIGH</div>
+                        <p>78% at Peak Junctions</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Vehicles Detected</h3>
+                        <div class="number">1,284</div>
+                        <p>Today from videos</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>High Risk Hours</h3>
+                        <div class="number">17:00 - 21:00</div>
+                        <p>Evening peak in Kampala</p>
+                    </div>
+                </div>
+
+                <div class="chart-placeholder">
+                    <h3>Time-based Risk Trend</h3>
+                    <p>[Chart will be populated by dashboard.js]</p>
+                </div>
+            </section>
+
+            <!-- Video Analysis Section -->
+            <section id="videos-section" class="section">
+                <h2>🎥 Video Processing</h2>
+                <p>Processing local Uganda traffic videos from <strong>data/input_video/</strong></p>
+                
+                <button onclick="runVideoProcessing()" class="btn-primary">
+                    <i class="fas fa-play"></i> Process Videos Now
+                </button>
+                
+                <div id="video-results" class="results-box">
+                    Results will appear here after running pipeline...
+                </div>
+            </section>
+
+            <!-- Hotspots Section -->
+            <section id="hotspots-section" class="section">
+                <h2>📍 Accident Hotspots</h2>
+                <ul class="hotspot-list">
+                    <li><strong>Kampala Roundabout</strong> - Risk Score: 92%</li>
+                    <li><strong>Mbarara Junction</strong> - Risk Score: 76%</li>
+                    <li><strong>Entebbe Road</strong> - Risk Score: 65%</li>
+                </ul>
+                <p class="note"><em>Based on processed video data + historical patterns</em></p>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <p>MVP Demo • Built for Uganda Road Safety • May 2026</p>
+            <p><strong>Keith Ndiema Kissa</strong> - Mbarara University</p>
+        </footer>
     </div>
 
-    <div class="card">
-        <h2>Quick Demo</h2>
-        <a href="http://localhost:8000/docs" target="_blank">
-            <button style="padding:10px 20px; background:#3b82f6; color:white; border:none; border-radius:5px;">
-                Open API Documentation
-            </button>
-        </a>
-    </div>
-
-    <footer style="margin-top:50px; text-align:center; color:#64748b;">
-        Submitted for Ministry of ICT & National Guidance • May 2026
-    </footer>
+    <script src="dashboard.js"></script>
 </body>
 </html>

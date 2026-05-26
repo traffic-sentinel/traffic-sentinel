@@ -1,0 +1,54 @@
+# Traffic Sentinel - .gitignore (Optimized for MVP)
+
+# Data folders (Large files - Videos, outputs)
+data/input_video/*
+data/output_results/*
+data/sample_framing/*
+!data/.gitkeep
+
+# Models & heavy files
+models/*
+*.h5
+*.pth
+*.onnx
+
+# Environment
+.env
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Frontend build (if any)
+frontend/dist/
+frontend/node_modules/
+
+# Temporary files
+*.tmp
+temp/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Exclude large video files from accidental commit
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Keep empty directories
+!data/input_video/.gitkeep
+!data/output_results/.gitkeep
+!data/sample_framing/.gitkeep
