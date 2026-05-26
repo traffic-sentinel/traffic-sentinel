@@ -1,88 +1,59 @@
-Traffic Sentinel
+# Traffic Sentinel - AI Traffic Monitoring System
 
-Traffic Sentinel is a data-driven traffic intelligence system that predicts accident-prone locations and high-risk time periods using machine learning and spatio-temporal analysis.
+**An intelligent traffic monitoring and analytics system** built for Uganda's urban mobility challenges.
 
+![Traffic Sentinel](https://via.placeholder.com/800x400?text=Traffic+Sentinel+Dashboard) <!-- Replace with actual screenshot later -->
 
-Problem
+## Problem Statement
+Uganda faces increasing traffic congestion, road accidents, and inefficient traffic management in cities like Kampala. Traffic Sentinel uses **Computer Vision + AI** to automatically detect vehicles, analyze traffic flow, and identify violations in real-time.
 
-Urban traffic systems in many cities lack predictive intelligence. Accidents often occur in recurring patterns, but current systems react after incidents rather than preventing them.
+## Key Features
+- Vehicle detection and counting using YOLO
+- Traffic density and congestion analysis
+- Violation detection (speeding, wrong lane, etc.)
+- Spatio-temporal hotspot analysis
+- Web dashboard for visualization
+- Video processing pipeline
 
+## Tech Stack
+- **Backend**: FastAPI (Python)
+- **Computer Vision**: OpenCV + Ultralytics YOLO
+- **Frontend**: HTML + JavaScript
+- **Deployment**: Docker
 
+## Quick Start (One Command)
 
-Solution
+```bash
+# Clone and run
+git clone https://github.com/traffic-sentinel/traffic-sentinel.git
+cd traffic-sentinel
+chmod +x run.sh
+./run.sh
+```
 
-Traffic Sentinel analyzes historical traffic and accident data to:
-
-- Predict accident risk levels  
-- Identify high-risk locations (hotspots)  
-- Detect time-based patterns (rush hours, night risk, etc.)  
-- Support data-driven traffic planning and safety interventions  
-
-
-
-Features (MVP)
-
-- 🚨 Accident risk prediction model  
-- ⏱️ Time-based risk analysis  
-- 📍 Identification of high-risk zones  
-- 📈 Data exploration and visualization  
-
-
-
-Tech Stack
-
-- Python  
-- Pandas / NumPy  
-- Scikit-learn  
-- Matplotlib / Seaborn  
-- Streamlit (planned for dashboard)  
-
-
-
-Project Structure
-
+## Project Structure
+```
 traffic-sentinel/
-│
-├── data/          # datasets (not included in repo)
-├── notebooks/     # exploratory analysis & experiments
-├── src/           # core scripts and models
-├── models/        # trained models (excluded)
-├── app/           # dashboard (Streamlit)
-├── README.md
-└── requirements.txt
-
-Usage
-
-Run Jupyter notebooks for exploration:
-
-```bash
-jupyter notebook
+├── backend/          # FastAPI application
+├── frontend/         # Dashboard
+├── scripts/          # Automation & testing
+├── data/             # Input/output videos
+├── models/           # Trained ML models
+└── docs/             # Documentation
 ```
 
-(Upcoming) Run dashboard:
+## Current MVP Status
+- Basic video processing pipeline ready
+- Vehicle detection service implemented
+- Simple web dashboard
+- Ready for extension with real-time analytics
 
-```bash
-streamlit run app/app.py
-```
+## Government Impact
+- Reduce road accidents through better enforcement
+- Optimize traffic flow in Kampala and other cities
+- Provide data-driven insights for urban planning
+- Support digital transformation of transport sector
 
-Goal
+---
 
-To build a scalable traffic risk intelligence system that helps reduce accidents and improve urban mobility through predictive analytics.
-
-
-
-Future Work
-
-*Geospatial heatmaps of accident hotspots
-*Real-time traffic data integration
-*Advanced ML models (time series + deep learning)
-*Smart traffic system integration
-
-📜 License
-
-This project is licensed under the MIT License.
-
-
-👤 Author
-
-Keith Ndiema Kissa— Computer Science (Mbarara University of Science and Technology)
+**Made for the Ministry of ICT & National Guidance - Government Systems Prototype Showcase (May/June 2026)**
