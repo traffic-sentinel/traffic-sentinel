@@ -1,0 +1,64 @@
+# Traffic Sentinel - Configuration File
+# Optimized for Uganda MVP (Deadline: 31 May 2026)
+
+# Project Settings
+project:
+  name: "Traffic Sentinel"
+  version: "0.1.0-mvp"
+  description: "Uganda Traffic Risk Prediction using Local Videos"
+  author: "Keith Ndiema Kissa"
+  location_focus: "Kampala & Mbarara"
+
+# Paths (Relative to project root)
+paths:
+  input_video: "data/input_video"
+  output_results: "data/output_results"
+  sample_framing: "data/sample_framing"
+  models: "models"
+  frontend: "frontend"
+  logs: "logs"
+
+# Video Processing Settings
+video:
+  supported_formats: [".mp4", ".avi", ".mov"]
+  frame_sample_rate: 30          # Process every Nth frame
+  save_sample_frames: true
+  max_duration_minutes: 30       # Safety limit for MVP
+
+# Risk Prediction Settings (Uganda Context)
+risk:
+  thresholds:
+    low: 40
+    medium: 70
+    high: 85
+  factors:
+    vehicle_density: 0.45
+    time_of_day: 0.30
+    location_risk: 0.25
+  night_risk_multiplier: 1.35     # Higher risk after 6 PM in Kampala
+
+# Model Settings
+model:
+  type: "random_forest"           # Can change to xgboost later
+  version: "v1_mvp"
+  random_state: 42
+  test_size: 0.2
+
+# Uganda-specific defaults
+uganda:
+  default_city: "Kampala"
+  peak_hours:
+    morning: ["07:00", "10:00"]
+    evening: ["17:00", "21:00"]
+  high_risk_vehicles: ["boda", "matatu"]
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+
+# Future API / Dashboard
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
