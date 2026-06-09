@@ -185,6 +185,59 @@ async def get_video_results():
 
 
 # ============================================================================
+# DASHBOARD ENDPOINT
+# ============================================================================
+
+
+@app.get("/api/dashboard", tags=["Dashboard"])
+async def get_dashboard_stats():
+    """Aggregated stats for frontend dashboard"""
+    results = []
+
+    if OUTPUT_RESULTS_DIR.exists():
+        for result_file in OUTPUT_RESULTS_DIR.glob("result_*.json"):
+            try:
+                with open(result_file, "r") as f:
+                    results.append(json.load(f))
+            except json.JSONDecodeError:
+                logger.warning(f"Could not parse {result_file}")
+
+    total_videos = len(results)
+    total_detections = 0
+    peak_vehicles = 0
+    high_density_frames = 0
+    avg_vehicles_list = []
+
+    for r in results:
+        avg = r.get("avg_vehicles_per_sample", 0)
+        peak = r.get("peak_vehicles", 0)
+        high_density = r.get("high_density_frames", 0)
+
+        avg_vehicles_list.append(avg)
+        total_detections += avg * 10  # rough estimate
+        if peak > peak_vehicles:
+            peak_vehicles = peak
+        high_density_frames += high_density
+
+    overall_avg = (
+        round(sum(avg_vehicles_list) / len(avg_vehicles_list), 1)
+        if avg_vehicles_list
+        else 0
+    )
+
+    return {
+        "total_videos": total_videos,
+        "overall_avg_vehicles": overall_avg,
+        "peak_risk_period": "17:00 - 21:00",
+        "total_detections": int(total_detections),
+        "peak_vehicles": peak_vehicles,
+        "high_density_frames": high_density_frames,
+        "results": results[:5],  # limit to 5 for frontend consumption
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ============================================================================
 # RISK PREDICTION ENDPOINTS
 # ============================================================================
 

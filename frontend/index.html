@@ -30,24 +30,24 @@
                 <div class="stats-grid">
                     <div class="stat-card">
                         <h3>Current Risk</h3>
-                        <div class="risk-high">HIGH</div>
-                        <p>78% at Peak Junctions</p>
+                        <div id="risk-level" class="risk-high">HIGH</div>
+                        <p id="risk-desc">78% at Peak Junctions</p>
                     </div>
                     <div class="stat-card">
                         <h3>Vehicles Detected</h3>
-                        <div class="number">1,284</div>
-                        <p>Today from videos</p>
+                        <div id="vehicles-detected" class="number">1,284</div>
+                        <p>From processed videos</p>
                     </div>
                     <div class="stat-card">
-                        <h3>High Risk Hours</h3>
-                        <div class="number">17:00 - 21:00</div>
-                        <p>Evening peak in Kampala</p>
+                        <h3>Peak Vehicles</h3>
+                        <div id="peak-vehicles" class="number">28</div>
+                        <p>per sample frame</p>
                     </div>
                 </div>
 
-                <div class="chart-placeholder">
+                <div class="chart-placeholder" id="risk-chart">
                     <h3>Time-based Risk Trend</h3>
-                    <p>[Chart will be populated by dashboard.js]</p>
+                    <p id="chart-content">Loading real data from processed videos...</p>
                 </div>
             </section>
 

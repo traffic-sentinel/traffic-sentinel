@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add current date/time
     updateLiveTime();
     setInterval(updateLiveTime, 60000); // Update every minute
+
+    loadDashboardStats(); // Initial load of real data
 });
 
 // Show/Hide sections
@@ -45,43 +47,84 @@ function updateLiveTime() {
     console.log(`Current Kampala Time: ${dateString} ${timeString}`);
 }
 
-// Run Video Processing (connects to backend)
-function runVideoProcessing() {
+// Run Video Processing (connects to backend API)
+async function runVideoProcessing() {
     const resultsBox = document.getElementById('video-results');
-    
-    resultsBox.innerHTML = `
-        <p><strong>Processing videos...</strong></p>
-        <p>This may take a while depending on video length.</p>
-    `;
-    
-    // Simulate processing (in real MVP you can call backend API)
-    setTimeout(() => {
-        resultsBox.innerHTML = `
-            <h4>✅ Processing Complete</h4>
-            <ul>
-                <li><strong>Videos Analyzed:</strong> All files in data/input_video/</li>
-                <li><strong>Average Vehicles:</strong> 14-22 per frame</li>
-                <li><strong>Peak Risk Period:</strong> 5:00 PM - 9:00 PM</li>
-                <li><strong>Output Saved:</strong> data/output_results/</li>
-            </ul>
-            <p><em>Run <strong>./run.sh</strong> for full pipeline.</em></p>
-        `;
+    resultsBox.innerHTML = `<p><strong>Processing videos... (this runs in background)</strong></p>`;
+
+    try {
+        const response = await fetch('http://localhost:8000/api/pipeline', { method: 'POST' });
+        const data = await response.json();
+        resultsBox.innerHTML = `<p><strong>Pipeline started!</strong> Check status or refresh dashboard.</p>`;
         
-        // Auto-switch to dashboard after processing
-        setTimeout(() => {
-            showSection('dashboard');
-        }, 2500);
-    }, 1800);
+        // Poll status briefly then load dashboard
+        setTimeout(() => loadDashboardStats(), 3000);
+    } catch (e) {
+        resultsBox.innerHTML = `<p>Error: ${e.message}. Make sure backend is running.</p>`;
+    }
 }
 
-// Future: Load real results from JSON
-async function loadRiskData() {
+// Core function to load real stats from backend
+async function loadDashboardStats() {
     try {
-        // In future: fetch('/api/results') or read local JSON
-        console.log("Risk data would be loaded here from output_results/");
+        // Fetch processed results
+        const resResponse = await fetch('http://localhost:8000/api/results');
+        const resultsData = await resResponse.json();
+
+        // Fetch predictions
+        const predResponse = await fetch('http://localhost:8000/api/predictions');
+        const predData = await predResponse.json().catch(() => ({}));
+
+        // Aggregate stats
+        let totalVehicles = 0;
+        let peakVehicles = 0;
+
+        if (resultsData.results && resultsData.results.length > 0) {
+            resultsData.results.forEach(result => {
+                if (result.avg_vehicles_per_sample) {
+                    totalVehicles += result.avg_vehicles_per_sample * 10; // rough estimate
+                }
+                if (result.peak_vehicles > peakVehicles) {
+                    peakVehicles = result.peak_vehicles;
+                }
+            });
+
+            // Update stat card DOM elements
+            updateStatCard('vehicles-detected', Math.round(totalVehicles).toLocaleString());
+            updateStatCard('peak-vehicles', peakVehicles);
+
+            // Update chart placeholder content if data is available
+            const chartContent = document.getElementById('chart-content');
+            if (chartContent) {
+                chartContent.textContent = `Data loaded: ${resultsData.count} video(s) processed.`;
+            }
+        }
+
+        // Update risk level from predictions if available
+        if (predData && predData.summary) {
+            const summary = predData.summary;
+            const riskEl = document.getElementById('risk-level');
+            const riskDesc = document.getElementById('risk-desc');
+            if (riskEl && summary.overall_risk_level) {
+                riskEl.textContent = summary.overall_risk_level.toUpperCase();
+                riskEl.className = `risk-${summary.overall_risk_level.toLowerCase()}`;
+            }
+            if (riskDesc && summary.peak_risk_period) {
+                riskDesc.textContent = `Peak: ${summary.peak_risk_period}`;
+            }
+        }
+
+        console.log("✅ Dashboard updated with real data", resultsData);
     } catch (error) {
-        console.log("Using demo data for MVP");
+        console.error("Failed to load stats:", error);
+        // Gracefully leave default demo values in place
     }
+}
+
+// Helper: update a stat card element by ID
+function updateStatCard(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
 }
 
 // Keyboard shortcuts
