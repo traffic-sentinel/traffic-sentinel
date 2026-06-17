@@ -1,458 +1,425 @@
 """
-Traffic Sentinel - FastAPI Backend
-Main application entry point with REST API endpoints
+Traffic Sentinel — FastAPI Backend
+REST API for video processing, risk prediction, and dashboard data.
 """
 
-import logging
-import json
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
-from datetime import datetime
+from __future__ import annotations
 
-from .config import INPUT_VIDEO_DIR, OUTPUT_RESULTS_DIR, API_HOST, API_PORT
+import asyncio
+import json
+import logging
+import shutil
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+
+from .config import (
+    API_HOST,
+    API_PORT,
+    INPUT_VIDEO_DIR,
+    OUTPUT_RESULTS_DIR,
+    settings,
+)
 from .video_processor import VideoProcessor
 from .risk_predictor import RiskPredictor
-from .models import (
-    ProcessingStatus,
-    HealthCheck,
-    VideoProcessingResult,
-    RiskPrediction,
-    PipelineOutput,
-)
 
-# Configure logging
+# ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=getattr(logging, settings.log_level, logging.INFO),
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("traffic_sentinel.api")
 
-# Initialize FastAPI app
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Traffic Sentinel API",
-    description="AI-powered traffic intelligence and accident prediction system",
-    version="1.0.0",
+    description=(
+        "AI-powered traffic intelligence and accident hotspot prediction "
+        "for Uganda's urban road network."
+    ),
+    version="1.1.0",
+    contact={
+        "name": "Keith Ndiema Kissa",
+        "email": "keith@must.ac.ug",
+    },
+    license_info={"name": "MIT"},
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins + ["*"],  # restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize processors
+# ── Singletons ────────────────────────────────────────────────────────────────
 video_processor = VideoProcessor()
 risk_predictor = RiskPredictor()
 
-# Global state (for demo purposes)
-processing_state = {"status": "idle", "progress": 0, "message": "Ready"}
+# ── Thread-safe processing state ─────────────────────────────────────────────
+_state_lock = threading.Lock()
+_processing_state: Dict[str, Any] = {
+    "status": "idle",
+    "progress": 0,
+    "message": "Ready",
+    "started_at": None,
+    "completed_at": None,
+}
 
 
-# ============================================================================
-# HEALTH & INFO ENDPOINTS
-# ============================================================================
+def _update_state(**kwargs: Any) -> None:
+    with _state_lock:
+        _processing_state.update(kwargs)
 
 
-@app.get("/", tags=["Info"])
-async def root():
-    """Root endpoint - API information"""
-    return {
-        "name": "Traffic Sentinel API",
-        "version": "1.0.0",
-        "description": "AI traffic intelligence and accident hotspot prediction",
-        "docs": "/docs",
-        "endpoints": {
-            "health": "/health",
-            "process_videos": "/api/process",
-            "get_results": "/api/results",
-            "get_predictions": "/api/predictions",
-            "get_full_pipeline": "/api/pipeline",
-        },
-    }
+def _get_state() -> Dict[str, Any]:
+    with _state_lock:
+        return dict(_processing_state)
 
 
-@app.get("/health", response_model=HealthCheck, tags=["Health"])
-async def health_check():
-    """Health check endpoint"""
-    return HealthCheck(
-        status="healthy",
-        version="1.0.0",
-        timestamp=datetime.now().isoformat(),
-    )
+# ── Pydantic models ───────────────────────────────────────────────────────────
+class HealthResponse(BaseModel):
+    status: str
+    version: str
+    timestamp: str
+    uptime_note: str = "Use /docs for interactive API explorer"
 
 
-# ============================================================================
-# VIDEO PROCESSING ENDPOINTS
-# ============================================================================
+class ProcessingStatusResponse(BaseModel):
+    status: str
+    progress: int = Field(ge=0, le=100)
+    message: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
 
 
-@app.get("/api/status", response_model=ProcessingStatus, tags=["Processing"])
-async def get_processing_status():
-    """Get current processing status"""
-    return ProcessingStatus(
-        status=processing_state["status"],
-        progress=processing_state["progress"],
-        message=processing_state["message"],
-    )
+class PipelineStartResponse(BaseModel):
+    status: str
+    message: str
+    poll_at: str = "/api/status"
+    results_at: str = "/api/results"
+    predictions_at: str = "/api/predictions"
 
 
-@app.post("/api/process", tags=["Processing"])
-async def process_videos(background_tasks: BackgroundTasks):
-    """
-    Process all videos in the input directory
-
-    Returns:
-        Processing status and job info
-    """
-    if processing_state["status"] == "processing":
-        raise HTTPException(status_code=409, detail="Processing already in progress")
-
-    # Start background processing
-    background_tasks.add_task(_run_video_processing)
-
-    return {
-        "status": "started",
-        "message": "Video processing started in background",
-        "check_status_at": "/api/status",
-        "check_results_at": "/api/results",
-    }
-
-
-async def _run_video_processing():
-    """Background task: Process all videos"""
-    try:
-        processing_state["status"] = "processing"
-        processing_state["progress"] = 0
-        processing_state["message"] = "Initializing video processing..."
-
-        logger.info("Starting video processing pipeline...")
-
-        # Process all videos
-        results = video_processor.process_batch(INPUT_VIDEO_DIR)
-
-        if not results:
-            processing_state["status"] = "completed"
-            processing_state["progress"] = 100
-            processing_state["message"] = "No videos found to process"
-            logger.warning("No videos found in input directory")
-            return
-
-        # Process each video (simulated progress)
-        for idx, result in enumerate(results):
-            processing_state["progress"] = int(((idx + 1) / len(results)) * 90)
-            processing_state["message"] = f"Processing: {result['video_name']}"
-
-        processing_state["progress"] = 100
-        processing_state["status"] = "completed"
-        processing_state["message"] = f"✅ Processed {len(results)} video(s)"
-
-        logger.info(f"✅ Video processing complete: {len(results)} videos processed")
-
-    except Exception as e:
-        logger.error(f"Error during video processing: {e}")
-        processing_state["status"] = "failed"
-        processing_state["message"] = str(e)
-
-
-@app.get("/api/results", tags=["Processing"])
-async def get_video_results():
-    """Get all video processing results"""
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _load_result_files(pattern: str = "result_*.json") -> List[Dict]:
+    """Load all JSON result files matching pattern from output dir."""
     results = []
-
     if not OUTPUT_RESULTS_DIR.exists():
-        return {"results": [], "count": 0}
-
-    # Load all result files
-    for result_file in OUTPUT_RESULTS_DIR.glob("result_*.json"):
+        return results
+    for f in sorted(OUTPUT_RESULTS_DIR.glob(pattern)):
         try:
-            with open(result_file, "r") as f:
-                data = json.load(f)
-                results.append(data)
-        except json.JSONDecodeError:
-            logger.warning(f"Could not parse {result_file}")
-
-    return {
-        "results": results,
-        "count": len(results),
-        "timestamp": datetime.now().isoformat(),
-    }
+            results.append(json.loads(f.read_text()))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Skipping malformed file %s: %s", f.name, exc)
+    return results
 
 
-# ============================================================================
-# DASHBOARD ENDPOINT
-# ============================================================================
+def _require_results() -> List[Dict]:
+    """Return results or raise 404."""
+    results = _load_result_files()
+    if not results:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No video results found. POST /api/process first.",
+        )
+    return results
 
 
-@app.get("/api/dashboard", tags=["Dashboard"])
-async def get_dashboard_stats():
-    """Aggregated stats for frontend dashboard"""
-    results = []
-
-    if OUTPUT_RESULTS_DIR.exists():
-        for result_file in OUTPUT_RESULTS_DIR.glob("result_*.json"):
-            try:
-                with open(result_file, "r") as f:
-                    results.append(json.load(f))
-            except json.JSONDecodeError:
-                logger.warning(f"Could not parse {result_file}")
-
-    total_videos = len(results)
-    total_detections = 0
-    peak_vehicles = 0
-    high_density_frames = 0
-    avg_vehicles_list = []
-
-    for r in results:
-        avg = r.get("avg_vehicles_per_sample", 0)
-        peak = r.get("peak_vehicles", 0)
-        high_density = r.get("high_density_frames", 0)
-
-        avg_vehicles_list.append(avg)
-        total_detections += avg * 10  # rough estimate
-        if peak > peak_vehicles:
-            peak_vehicles = peak
-        high_density_frames += high_density
-
-    overall_avg = (
-        round(sum(avg_vehicles_list) / len(avg_vehicles_list), 1)
-        if avg_vehicles_list
-        else 0
+# ── Background tasks ──────────────────────────────────────────────────────────
+async def _run_video_processing() -> None:
+    _update_state(
+        status="processing",
+        progress=5,
+        message="Scanning input directory…",
+        started_at=datetime.now().isoformat(),
+        completed_at=None,
     )
-
-    return {
-        "total_videos": total_videos,
-        "overall_avg_vehicles": overall_avg,
-        "peak_risk_period": "17:00 - 21:00",
-        "total_detections": int(total_detections),
-        "peak_vehicles": peak_vehicles,
-        "high_density_frames": high_density_frames,
-        "results": results[:5],  # limit to 5 for frontend consumption
-        "timestamp": datetime.now().isoformat(),
-    }
-
-
-# ============================================================================
-# RISK PREDICTION ENDPOINTS
-# ============================================================================
-
-
-@app.post("/api/predict", tags=["Prediction"])
-async def predict_risk(background_tasks: BackgroundTasks):
-    """
-    Predict risk for all processed videos
-
-    Returns:
-        Risk predictions and summary
-    """
-    # Load results
-    results_file = OUTPUT_RESULTS_DIR / "processing_summary.json"
-
-    if not results_file.exists():
-        # Try to load individual result files
-        video_results = []
-        if OUTPUT_RESULTS_DIR.exists():
-            for result_file in OUTPUT_RESULTS_DIR.glob("result_*.json"):
-                try:
-                    with open(result_file, "r") as f:
-                        video_results.append(json.load(f))
-                except json.JSONDecodeError:
-                    pass
-    else:
-        try:
-            with open(results_file, "r") as f:
-                data = json.load(f)
-                video_results = data.get("results", [])
-        except json.JSONDecodeError:
-            video_results = []
-
-    if not video_results:
-        raise HTTPException(
-            status_code=404, detail="No video results found. Process videos first."
+    try:
+        results = await asyncio.get_event_loop().run_in_executor(
+            None, video_processor.process_batch, INPUT_VIDEO_DIR
+        )
+        count = len(results) if results else 0
+        _update_state(
+            status="completed",
+            progress=100,
+            message=f"✅ Processed {count} video(s)" if count else "⚠️ No videos found in input directory",
+            completed_at=datetime.now().isoformat(),
+        )
+        logger.info("Video processing complete — %d video(s)", count)
+    except Exception as exc:
+        logger.exception("Video processing failed: %s", exc)
+        _update_state(
+            status="failed",
+            progress=0,
+            message=f"Error: {exc}",
+            completed_at=datetime.now().isoformat(),
         )
 
-    # Generate predictions
-    predictions = risk_predictor.batch_predict(video_results)
-    summary = risk_predictor.generate_summary(predictions)
 
-    # Save predictions
-    pipeline_output = {
-        "pipeline_run_time": datetime.now().isoformat(),
-        "total_videos_processed": len(video_results),
-        "predictions": predictions,
-        "summary": summary,
-    }
-
-    output_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
-    with open(output_file, "w") as f:
-        json.dump(pipeline_output, f, indent=2)
-
-    logger.info(f"✅ Risk predictions generated: {len(predictions)} predictions")
-
-    return pipeline_output
-
-
-@app.get("/api/predictions", tags=["Prediction"])
-async def get_predictions():
-    """Get final risk predictions"""
-    pred_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
-
-    if not pred_file.exists():
-        raise HTTPException(
-            status_code=404, detail="No predictions available. Run /api/predict first."
+async def _run_full_pipeline() -> None:
+    _update_state(
+        status="processing",
+        progress=5,
+        message="Step 1/3 — Processing videos…",
+        started_at=datetime.now().isoformat(),
+        completed_at=None,
+    )
+    try:
+        # Step 1
+        results = await asyncio.get_event_loop().run_in_executor(
+            None, video_processor.process_batch, INPUT_VIDEO_DIR
         )
-
-    try:
-        with open(pred_file, "r") as f:
-            data = json.load(f)
-        return data
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Could not read predictions file")
-
-
-# ============================================================================
-# FULL PIPELINE ENDPOINT
-# ============================================================================
-
-
-@app.post("/api/pipeline", tags=["Pipeline"])
-async def run_full_pipeline(background_tasks: BackgroundTasks):
-    """
-    Run the complete pipeline: video processing + risk prediction
-
-    Returns:
-        Pipeline execution info
-    """
-    if processing_state["status"] == "processing":
-        raise HTTPException(status_code=409, detail="Processing already in progress")
-
-    background_tasks.add_task(_run_full_pipeline)
-
-    return {
-        "status": "started",
-        "message": "Full pipeline started in background",
-        "steps": ["Video Processing", "Risk Prediction", "Report Generation"],
-        "check_status_at": "/api/status",
-        "check_results_at": "/api/results",
-        "check_predictions_at": "/api/predictions",
-    }
-
-
-async def _run_full_pipeline():
-    """Background task: Run complete pipeline"""
-    try:
-        processing_state["status"] = "processing"
-        processing_state["progress"] = 0
-        processing_state["message"] = "Starting full pipeline..."
-
-        # Step 1: Video Processing
-        logger.info("Step 1/3: Processing videos...")
-        processing_state["message"] = "Step 1/3: Processing videos..."
-        results = video_processor.process_batch(INPUT_VIDEO_DIR)
-
         if not results:
-            processing_state["status"] = "completed"
-            processing_state["message"] = "No videos found to process"
+            _update_state(
+                status="completed",
+                progress=100,
+                message="⚠️ No videos found in input directory",
+                completed_at=datetime.now().isoformat(),
+            )
             return
 
-        processing_state["progress"] = 40
-        processing_state["message"] = f"Step 2/3: Generating predictions for {len(results)} video(s)..."
+        _update_state(progress=45, message=f"Step 2/3 — Predicting risk for {len(results)} video(s)…")
 
-        # Step 2: Risk Prediction
-        logger.info("Step 2/3: Predicting risk...")
+        # Step 2
         predictions = risk_predictor.batch_predict(results)
         summary = risk_predictor.generate_summary(predictions)
 
-        processing_state["progress"] = 80
-        processing_state["message"] = "Step 3/3: Saving report..."
+        _update_state(progress=85, message="Step 3/3 — Saving report…")
 
-        # Step 3: Save final report
-        logger.info("Step 3/3: Generating final report...")
+        # Step 3
         pipeline_output = {
             "pipeline_run_time": datetime.now().isoformat(),
             "total_videos_processed": len(results),
             "predictions": predictions,
             "summary": summary,
         }
+        out_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
+        out_file.write_text(json.dumps(pipeline_output, indent=2))
 
-        output_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
-        with open(output_file, "w") as f:
-            json.dump(pipeline_output, f, indent=2)
-
-        processing_state["progress"] = 100
-        processing_state["status"] = "completed"
-        processing_state["message"] = (
-            f"✅ Pipeline complete: {len(results)} videos, {len(predictions)} predictions"
+        _update_state(
+            status="completed",
+            progress=100,
+            message=f"✅ Pipeline complete — {len(results)} videos · {len(predictions)} predictions",
+            completed_at=datetime.now().isoformat(),
+        )
+        logger.info("Full pipeline complete")
+    except Exception as exc:
+        logger.exception("Pipeline failed: %s", exc)
+        _update_state(
+            status="failed",
+            progress=0,
+            message=f"Pipeline error: {exc}",
+            completed_at=datetime.now().isoformat(),
         )
 
-        logger.info("✅ Full pipeline complete!")
 
-    except Exception as e:
-        logger.error(f"Pipeline error: {e}")
-        processing_state["status"] = "failed"
-        processing_state["message"] = str(e)
-
-
-# ============================================================================
-# UTILITY ENDPOINTS
-# ============================================================================
-
-
-@app.get("/api/videos", tags=["Utility"])
-async def list_input_videos():
-    """List all videos in the input directory"""
-    if not INPUT_VIDEO_DIR.exists():
-        return {"videos": [], "count": 0}
-
-    videos = [
-        f.name
-        for f in INPUT_VIDEO_DIR.iterdir()
-        if f.suffix.lower() in [".mp4", ".avi", ".mov", ".mkv"]
-    ]
-
+# ── Routes: info ──────────────────────────────────────────────────────────────
+@app.get("/", tags=["Info"])
+async def root() -> Dict:
     return {
-        "videos": videos,
-        "count": len(videos),
-        "input_directory": str(INPUT_VIDEO_DIR),
+        "name": "Traffic Sentinel API",
+        "version": "1.1.0",
+        "docs": "/docs",
+        "health": "/health",
     }
 
 
-@app.get("/api/download/predictions", tags=["Utility"])
-async def download_predictions():
-    """Download final predictions as JSON"""
-    pred_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
-
-    if not pred_file.exists():
-        raise HTTPException(status_code=404, detail="Predictions file not found")
-
-    return FileResponse(
-        pred_file, filename="traffic_sentinel_predictions.json", media_type="application/json"
+@app.get("/health", response_model=HealthResponse, tags=["Info"])
+async def health() -> HealthResponse:
+    return HealthResponse(
+        status="healthy",
+        version="1.1.0",
+        timestamp=datetime.now().isoformat(),
     )
 
 
-@app.get("/api/clear", tags=["Utility"])
-async def clear_results():
-    """Clear all processing results (for demo reset)"""
-    import shutil
+# ── Routes: processing ────────────────────────────────────────────────────────
+@app.get("/api/status", response_model=ProcessingStatusResponse, tags=["Processing"])
+async def get_status() -> ProcessingStatusResponse:
+    return ProcessingStatusResponse(**_get_state())
 
+
+@app.post("/api/process", response_model=PipelineStartResponse, tags=["Processing"])
+async def process_videos(background_tasks: BackgroundTasks) -> PipelineStartResponse:
+    if _get_state()["status"] == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A processing job is already running. Poll /api/status.",
+        )
+    background_tasks.add_task(_run_video_processing)
+    return PipelineStartResponse(status="started", message="Video processing started in background")
+
+
+@app.get("/api/results", tags=["Processing"])
+async def get_results(limit: int = Query(default=50, ge=1, le=200)) -> Dict:
+    results = _load_result_files()
+    return {
+        "results": results[:limit],
+        "count": len(results),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ── Routes: upload ────────────────────────────────────────────────────────────
+@app.post("/api/upload", tags=["Processing"])
+async def upload_video(file: UploadFile = File(...)) -> Dict:
+    """Upload a video file for processing."""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in settings.supported_video_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported format '{suffix}'. Use: {settings.supported_video_extensions}",
+        )
+    dest = INPUT_VIDEO_DIR / (file.filename or "upload.mp4")
+    try:
+        with dest.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save file: {exc}")
+    return {
+        "status": "uploaded",
+        "filename": dest.name,
+        "size_bytes": dest.stat().st_size,
+        "next": "POST /api/process",
+    }
+
+
+# ── Routes: dashboard ─────────────────────────────────────────────────────────
+@app.get("/api/dashboard", tags=["Dashboard"])
+async def get_dashboard() -> Dict:
+    results = _load_result_files()
+    if not results:
+        return {
+            "total_videos": 0,
+            "overall_avg_vehicles": 0,
+            "peak_vehicles": 0,
+            "total_detections": 0,
+            "high_density_frames": 0,
+            "peak_risk_period": "17:00 – 21:00",
+            "results": [],
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    avg_list = [r.get("avg_vehicles_per_sample", 0) for r in results]
+    peak_list = [r.get("peak_vehicles", 0) for r in results]
+    hdf_list = [r.get("high_density_frames", 0) for r in results]
+
+    return {
+        "total_videos": len(results),
+        "overall_avg_vehicles": round(sum(avg_list) / len(avg_list), 1) if avg_list else 0,
+        "peak_vehicles": max(peak_list) if peak_list else 0,
+        "total_detections": int(sum(avg_list) * 10),
+        "high_density_frames": sum(hdf_list),
+        "peak_risk_period": "17:00 – 21:00",
+        "results": results[:5],
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ── Routes: predictions ───────────────────────────────────────────────────────
+@app.post("/api/predict", tags=["Prediction"])
+async def predict_risk() -> Dict:
+    video_results = _require_results()
+    predictions = risk_predictor.batch_predict(video_results)
+    summary = risk_predictor.generate_summary(predictions)
+    output = {
+        "pipeline_run_time": datetime.now().isoformat(),
+        "total_videos_processed": len(video_results),
+        "predictions": predictions,
+        "summary": summary,
+    }
+    pred_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
+    pred_file.write_text(json.dumps(output, indent=2))
+    logger.info("Predictions generated for %d video(s)", len(video_results))
+    return output
+
+
+@app.get("/api/predictions", tags=["Prediction"])
+async def get_predictions() -> Dict:
+    pred_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
+    if not pred_file.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No predictions yet. POST /api/predict to generate.",
+        )
+    try:
+        return json.loads(pred_file.read_text())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Predictions file is corrupted.")
+
+
+# ── Routes: pipeline ──────────────────────────────────────────────────────────
+@app.post("/api/pipeline", response_model=PipelineStartResponse, tags=["Pipeline"])
+async def run_pipeline(background_tasks: BackgroundTasks) -> PipelineStartResponse:
+    if _get_state()["status"] == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Processing already in progress.",
+        )
+    background_tasks.add_task(_run_full_pipeline)
+    return PipelineStartResponse(
+        status="started",
+        message="Full pipeline (video processing + risk prediction) started",
+    )
+
+
+# ── Routes: utility ───────────────────────────────────────────────────────────
+@app.get("/api/videos", tags=["Utility"])
+async def list_videos() -> Dict:
+    if not INPUT_VIDEO_DIR.exists():
+        return {"videos": [], "count": 0, "input_directory": str(INPUT_VIDEO_DIR)}
+    videos = [
+        f.name
+        for f in INPUT_VIDEO_DIR.iterdir()
+        if f.suffix.lower() in settings.supported_video_extensions
+    ]
+    return {"videos": sorted(videos), "count": len(videos), "input_directory": str(INPUT_VIDEO_DIR)}
+
+
+@app.get("/api/download/predictions", tags=["Utility"])
+async def download_predictions() -> FileResponse:
+    pred_file = OUTPUT_RESULTS_DIR / "final_risk_predictions.json"
+    if not pred_file.exists():
+        raise HTTPException(status_code=404, detail="No predictions file found.")
+    return FileResponse(
+        pred_file,
+        filename=f"traffic_sentinel_predictions_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+        media_type="application/json",
+    )
+
+
+@app.delete("/api/clear", tags=["Utility"])
+async def clear_results() -> Dict:
+    """Reset all output results and processing state. Useful for demo resets."""
     if OUTPUT_RESULTS_DIR.exists():
         shutil.rmtree(OUTPUT_RESULTS_DIR)
     OUTPUT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    processing_state["status"] = "idle"
-    processing_state["progress"] = 0
-    processing_state["message"] = "Ready"
-
-    return {"status": "cleared", "message": "All results cleared"}
+    _update_state(status="idle", progress=0, message="Ready", started_at=None, completed_at=None)
+    return {"status": "cleared", "message": "All results removed. Ready for fresh demo."}
 
 
+# Keep GET /api/clear for backward compat (Streamlit calls it with requests.get)
+app.get("/api/clear", tags=["Utility"])(clear_results)
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-
-    logger.info(f"Starting Traffic Sentinel API on {API_HOST}:{API_PORT}")
-    uvicorn.run(app, host=API_HOST, port=API_PORT)
+    logger.info("Starting Traffic Sentinel API on %s:%s", API_HOST, API_PORT)
+    uvicorn.run("backend.app.main:app", host=API_HOST, port=API_PORT, reload=settings.api_reload)

@@ -1,209 +1,220 @@
 """
-Traffic Sentinel - Risk Prediction Module
-Spatio-temporal analysis for accident hotspot prediction
+Traffic Sentinel — Risk Prediction Module
+Spatio-temporal accident risk scoring for Uganda road junctions.
 """
 
+from __future__ import annotations
+
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
-import logging
+from typing import Dict, List, Optional, Tuple
 
 from .config import (
+    DEFAULT_LOCATION,
+    HIGH_RISK_HOUR_BONUS,
     HIGH_TRAFFIC_THRESHOLD,
     MEDIUM_TRAFFIC_THRESHOLD,
-    HIGH_RISK_HOURS,
-    HIGH_RISK_HOUR_BONUS,
-    DEFAULT_LOCATION,
     OUTPUT_RESULTS_DIR,
+    settings,
 )
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("traffic_sentinel.risk_predictor")
+
+# Risk level thresholds (score → label)
+_RISK_THRESHOLDS: List[Tuple[int, str]] = [
+    (85, "CRITICAL"),
+    (65, "HIGH"),
+    (40, "MEDIUM"),
+    (0,  "LOW"),
+]
+
+_RECOMMENDATIONS: Dict[str, str] = {
+    "CRITICAL": "🚨 URGENT — Deploy additional traffic police immediately. Consider temporary junction closure.",
+    "HIGH":     "⚠️ HIGH RISK — Increase patrol frequency. Erect additional signage and speed calming measures.",
+    "MEDIUM":   "⚡ MODERATE — Monitor closely. Standard patrol recommended during peak hours.",
+    "LOW":      "✅ NORMAL — Routine surveillance sufficient. No immediate action required.",
+}
 
 
 class RiskPredictor:
-    """Predict traffic accident risk based on video features"""
+    """Rule-based risk scoring from YOLO-derived traffic features."""
 
-    def __init__(self):
-        """Initialize risk predictor"""
-        self.base_score = 30
-        logger.info("Risk predictor initialized")
+    def __init__(self) -> None:
+        logger.info("RiskPredictor initialised")
 
-    def predict_risk(self, video_result: Dict, location: str = None) -> Dict:
+    # ── Public API ────────────────────────────────────────────────────────
+    def predict_risk(
+        self,
+        video_result: Dict,
+        location: Optional[str] = None,
+        analysis_time: Optional[datetime] = None,
+    ) -> Optional[Dict]:
         """
-        Calculate risk prediction from video analysis
+        Score accident risk for a single processed video.
 
         Args:
-            video_result: Result from video processing
-            location: Geographic location name
+            video_result: Output dict from VideoProcessor.process_video().
+            location: Human-readable junction name (overrides default).
+            analysis_time: Override current time for testing / batch replay.
 
         Returns:
-            Risk prediction dictionary
+            Risk prediction dict, or None if input is invalid.
         """
         if not video_result:
             return None
 
+        now = analysis_time or datetime.now()
         location = location or DEFAULT_LOCATION
-        avg_vehicles = video_result.get("avg_vehicles_per_sample", 0)
-        peak_vehicles = video_result.get("peak_vehicles", 0)
 
-        # Calculate base risk from traffic density
-        risk_score, risk_level = self._calculate_traffic_risk(
-            avg_vehicles, peak_vehicles
+        avg_vehicles: float = video_result.get("avg_vehicles_per_sample", 0)
+        peak_vehicles: int = video_result.get("peak_vehicles", 0)
+        high_density_frames: int = video_result.get("high_density_frames", 0)
+        duration: float = video_result.get("duration_seconds", 0)
+
+        # Component scores (0–100 each, weighted sum capped at 100)
+        density_score = self._score_density(avg_vehicles, peak_vehicles)
+        time_score = self._score_time(now)
+        congestion_score = self._score_congestion(high_density_frames, duration)
+
+        # Weighted aggregate
+        raw_score = (
+            density_score   * 0.55
+            + time_score    * 0.25
+            + congestion_score * 0.20
         )
-
-        # Add time-based risk factor
-        time_bonus = self._calculate_time_bonus()
-        risk_score = min(100, risk_score + time_bonus)
-
-        # Adjust risk level if score changed
-        risk_level = self._get_risk_level(risk_score)
-
-        # Generate recommendation
-        recommendation = self._get_recommendation(risk_score, risk_level)
-
-        # Create factors breakdown
-        factors = {
-            "traffic_density": f"Avg {avg_vehicles:.1f} vehicles",
-            "peak_congestion": f"Max {peak_vehicles} vehicles",
-            "time_of_day": self._get_time_description(),
-            "video_duration": f"{video_result.get('duration_seconds', 0)}s",
-        }
+        final_score = min(100, max(0, round(raw_score)))
+        risk_level = self._score_to_level(final_score)
 
         return {
-            "video": video_result["video_name"],
-            "risk_level": risk_level,
-            "risk_score": risk_score,
+            "video": video_result.get("video_name", "unknown"),
             "location": location,
-            "timestamp": str(datetime.now()),
-            "recommendation": recommendation,
-            "factors": factors,
+            "risk_level": risk_level,
+            "risk_score": final_score,
+            "timestamp": now.isoformat(),
+            "recommendation": _RECOMMENDATIONS[risk_level],
+            "factors": {
+                "avg_vehicles_per_frame": round(avg_vehicles, 1),
+                "peak_vehicles": peak_vehicles,
+                "high_density_frames": high_density_frames,
+                "time_period": self._time_label(now),
+                "video_duration_seconds": duration,
+            },
+            "component_scores": {
+                "traffic_density": round(density_score),
+                "time_of_day": round(time_score),
+                "congestion_events": round(congestion_score),
+            },
         }
 
-    def _calculate_traffic_risk(self, avg_vehicles: float, peak_vehicles: int) -> tuple:
-        """
-        Calculate risk based on traffic metrics
-
-        Returns:
-            Tuple of (risk_score, risk_level)
-        """
-        # Uganda context: High vehicle density correlates with higher accident risk
-        if peak_vehicles > HIGH_TRAFFIC_THRESHOLD:
-            if avg_vehicles > 18:
-                score = 85
-                level = "CRITICAL"
-            else:
-                score = 75
-                level = "HIGH"
-        elif avg_vehicles > MEDIUM_TRAFFIC_THRESHOLD:
-            score = 60
-            level = "MEDIUM"
-        else:
-            score = 35
-            level = "LOW"
-
-        return score, level
-
-    def _calculate_time_bonus(self) -> int:
-        """
-        Add risk points based on time of day
-
-        Uganda context: 5 PM to 7 AM sees higher accident rates
-        """
-        hour = datetime.now().hour
-
-        # Peak risk hours: evening rush (17-21) and night (21-7)
-        if hour >= HIGH_RISK_HOURS[0] or hour < HIGH_RISK_HOURS[1]:
-            return HIGH_RISK_HOUR_BONUS
-        # Morning rush (6-8)
-        elif 6 <= hour < 8:
-            return 8
-        else:
-            return 0
-
-    def _get_risk_level(self, score: int) -> str:
-        """Map risk score to risk level"""
-        if score >= 80:
-            return "CRITICAL"
-        elif score >= 60:
-            return "HIGH"
-        elif score >= 40:
-            return "MEDIUM"
-        else:
-            return "LOW"
-
-    def _get_recommendation(self, score: int, risk_level: str) -> str:
-        """Generate actionable recommendation"""
-        recommendations = {
-            "CRITICAL": "🚨 URGENT: Deploy additional patrols immediately",
-            "HIGH": "⚠️ Increase police presence and traffic enforcement",
-            "MEDIUM": "⚡ Monitor situation, standard patrols recommended",
-            "LOW": "✓ Normal monitoring sufficient",
-        }
-        return recommendations.get(risk_level, "No specific recommendation")
-
-    def _get_time_description(self) -> str:
-        """Describe current time period"""
-        hour = datetime.now().hour
-        if 17 <= hour < 21:
-            return "Evening peak (17:00-21:00)"
-        elif 21 <= hour or hour < 7:
-            return "Night hours (21:00-07:00) - HIGH RISK"
-        elif 6 <= hour < 8:
-            return "Morning rush (06:00-08:00)"
-        else:
-            return "Daytime hours"
-
-    def batch_predict(self, video_results: List[Dict]) -> List[Dict]:
-        """
-        Predict risk for multiple video results
-
-        Args:
-            video_results: List of video processing results
-
-        Returns:
-            List of risk predictions
-        """
+    def batch_predict(
+        self,
+        video_results: List[Dict],
+        analysis_time: Optional[datetime] = None,
+    ) -> List[Dict]:
+        """Score risk for a list of video results."""
         predictions = []
         for result in video_results:
-            prediction = self.predict_risk(result)
-            if prediction:
-                predictions.append(prediction)
-
+            pred = self.predict_risk(result, analysis_time=analysis_time)
+            if pred:
+                predictions.append(pred)
+        logger.info("Generated %d risk prediction(s)", len(predictions))
         return predictions
 
     def generate_summary(self, predictions: List[Dict]) -> Dict:
-        """
-        Generate summary statistics from predictions
-
-        Args:
-            predictions: List of risk predictions
-
-        Returns:
-            Summary statistics
-        """
+        """Aggregate statistics across all predictions."""
         if not predictions:
             return {}
 
-        risk_levels = [p["risk_level"] for p in predictions]
         scores = [p["risk_score"] for p in predictions]
-
-        critical_count = risk_levels.count("CRITICAL")
-        high_count = risk_levels.count("HIGH")
-        medium_count = risk_levels.count("MEDIUM")
-        low_count = risk_levels.count("LOW")
+        levels = [p["risk_level"] for p in predictions]
+        highest = max(predictions, key=lambda p: p["risk_score"])
 
         return {
             "total_predictions": len(predictions),
-            "critical_areas": critical_count,
-            "high_risk_areas": high_count,
-            "medium_risk_areas": medium_count,
-            "low_risk_areas": low_count,
-            "average_risk_score": round(sum(scores) / len(scores), 2),
+            "average_risk_score": round(sum(scores) / len(scores), 1),
             "max_risk_score": max(scores),
             "min_risk_score": min(scores),
-            "highest_risk_location": max(predictions, key=lambda x: x["risk_score"])
-            if predictions
-            else None,
+            "critical_areas": levels.count("CRITICAL"),
+            "high_risk_areas": levels.count("HIGH"),
+            "medium_risk_areas": levels.count("MEDIUM"),
+            "low_risk_areas": levels.count("LOW"),
+            "highest_risk_location": {
+                "location": highest["location"],
+                "video": highest["video"],
+                "risk_score": highest["risk_score"],
+                "risk_level": highest["risk_level"],
+            },
+            "generated_at": datetime.now().isoformat(),
         }
+
+    # ── Scoring components ────────────────────────────────────────────────
+    @staticmethod
+    def _score_density(avg_vehicles: float, peak_vehicles: int) -> float:
+        """
+        Traffic density → 0–100.
+        Uganda context: heavy boda-boda and matatu mix elevates risk faster than
+        equivalent pure-car traffic.
+        """
+        if peak_vehicles >= HIGH_TRAFFIC_THRESHOLD and avg_vehicles >= 18:
+            return 90.0
+        if peak_vehicles >= HIGH_TRAFFIC_THRESHOLD:
+            return 78.0
+        if avg_vehicles >= MEDIUM_TRAFFIC_THRESHOLD:
+            return 60.0
+        if avg_vehicles >= 6:
+            return 38.0
+        return 20.0
+
+    @staticmethod
+    def _score_time(now: datetime) -> float:
+        """
+        Time-of-day risk → 0–100.
+        Kampala peak risk: evening commute (17–21) and overnight (21–06).
+        """
+        h = now.hour
+        if 17 <= h < 21:   # Evening rush
+            return 85.0
+        if h >= 21 or h < 6:  # Night
+            return 75.0
+        if 6 <= h < 8:     # Morning rush
+            return 55.0
+        return 30.0         # Daytime
+
+    @staticmethod
+    def _score_congestion(high_density_frames: int, duration_seconds: float) -> float:
+        """
+        Sustained congestion events → 0–100.
+        Penalises junctions with frequent high-density spikes.
+        """
+        if duration_seconds <= 0:
+            return 0.0
+        # Normalise by video length (assume one sample per 30 frames ≈ 1 s)
+        rate = high_density_frames / max(1, duration_seconds / 30)
+        if rate >= 0.5:
+            return 80.0
+        if rate >= 0.25:
+            return 55.0
+        if rate >= 0.1:
+            return 35.0
+        return 15.0
+
+    # ── Helpers ───────────────────────────────────────────────────────────
+    @staticmethod
+    def _score_to_level(score: int) -> str:
+        for threshold, label in _RISK_THRESHOLDS:
+            if score >= threshold:
+                return label
+        return "LOW"
+
+    @staticmethod
+    def _time_label(now: datetime) -> str:
+        h = now.hour
+        if 17 <= h < 21:
+            return "Evening peak (17:00–21:00)"
+        if h >= 21 or h < 6:
+            return "Night hours (21:00–06:00) — HIGH RISK"
+        if 6 <= h < 8:
+            return "Morning rush (06:00–08:00)"
+        return "Daytime (08:00–17:00)"

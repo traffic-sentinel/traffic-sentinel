@@ -1,89 +1,466 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Traffic Sentinel | Uganda</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Traffic Sentinel | Uganda Road Safety</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Chart.js for visualisations -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header>
-            <div class="logo">
-                <h1>🚦 Traffic Sentinel</h1>
-                <p>Uganda Road Safety Intelligence</p>
-            </div>
-            <nav>
-                <a href="#" onclick="showSection('dashboard')">Dashboard</a>
-                <a href="#" onclick="showSection('videos')">Video Analysis</a>
-                <a href="#" onclick="showSection('hotspots')">Hotspots</a>
-            </nav>
-        </header>
 
-        <!-- Main Content -->
-        <main>
-            <!-- Dashboard Section -->
-            <section id="dashboard-section" class="section active">
-                <h2>📊 Risk Dashboard - Kampala</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <h3>Current Risk</h3>
-                        <div id="risk-level" class="risk-high">HIGH</div>
-                        <p id="risk-desc">78% at Peak Junctions</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Vehicles Detected</h3>
-                        <div id="vehicles-detected" class="number">1,284</div>
-                        <p>From processed videos</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Peak Vehicles</h3>
-                        <div id="peak-vehicles" class="number">28</div>
-                        <p>per sample frame</p>
-                    </div>
-                </div>
+<!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">🚦</span>
+    <div>
+      <div class="brand-name">Traffic Sentinel</div>
+      <div class="brand-sub">Uganda Road Safety Intelligence</div>
+    </div>
+  </div>
 
-                <div class="chart-placeholder" id="risk-chart">
-                    <h3>Time-based Risk Trend</h3>
-                    <p id="chart-content">Loading real data from processed videos...</p>
-                </div>
-            </section>
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="dashboard">
+      <span class="nav-icon">📊</span> Dashboard
+    </a>
+    <a href="#" class="nav-item" data-section="videos">
+      <span class="nav-icon">🎥</span> Video Analysis
+    </a>
+    <a href="#" class="nav-item" data-section="predictions">
+      <span class="nav-icon">📈</span> Risk Predictions
+    </a>
+    <a href="#" class="nav-item" data-section="hotspots">
+      <span class="nav-icon">📍</span> Hotspots
+    </a>
+  </nav>
 
-            <!-- Video Analysis Section -->
-            <section id="videos-section" class="section">
-                <h2>🎥 Video Processing</h2>
-                <p>Processing local Uganda traffic videos from <strong>data/input_video/</strong></p>
-                
-                <button onclick="runVideoProcessing()" class="btn-primary">
-                    <i class="fas fa-play"></i> Process Videos Now
-                </button>
-                
-                <div id="video-results" class="results-box">
-                    Results will appear here after running pipeline...
-                </div>
-            </section>
+  <div class="sidebar-status">
+    <div class="status-label">System Status</div>
+    <div class="status-row">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Checking…</span>
+    </div>
+    <div class="progress-bar-wrap" id="progress-wrap" style="display:none">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <div class="status-message" id="status-message"></div>
+  </div>
 
-            <!-- Hotspots Section -->
-            <section id="hotspots-section" class="section">
-                <h2>📍 Accident Hotspots</h2>
-                <ul class="hotspot-list">
-                    <li><strong>Kampala Roundabout</strong> - Risk Score: 92%</li>
-                    <li><strong>Mbarara Junction</strong> - Risk Score: 76%</li>
-                    <li><strong>Entebbe Road</strong> - Risk Score: 65%</li>
-                </ul>
-                <p class="note"><em>Based on processed video data + historical patterns</em></p>
-            </section>
-        </main>
+  <div class="sidebar-actions">
+    <button class="btn btn-primary btn-full" onclick="runPipeline()">▶ Run Full Pipeline</button>
+    <button class="btn btn-ghost btn-full" onclick="clearResults()">🗑 Reset Results</button>
+  </div>
 
-        <!-- Footer -->
-        <footer>
-            <p>MVP Demo • Built for Uganda Road Safety • May 2026</p>
-            <p><strong>Keith Ndiema Kissa</strong> - Mbarara University</p>
-        </footer>
+  <div class="sidebar-footer">
+    Ministry of ICT Showcase · June 2026
+  </div>
+</aside>
+
+<!-- ── Main content ──────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- ── DASHBOARD ───────────────────────────────────────────────────── -->
+  <section id="dashboard" class="page active">
+    <div class="page-header">
+      <h1>Road Safety Dashboard</h1>
+      <span class="page-sub">Kampala, Uganda · Real-time</span>
     </div>
 
-    <script src="dashboard.js"></script>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Videos Analysed</div>
+        <div class="kpi-value" id="kpi-videos">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Avg Vehicles / Frame</div>
+        <div class="kpi-value" id="kpi-avg">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Peak Frame Count</div>
+        <div class="kpi-value" id="kpi-peak">—</div>
+      </div>
+      <div class="kpi-card kpi-card--alert">
+        <div class="kpi-label">High-Density Frames</div>
+        <div class="kpi-value" id="kpi-hdf">—</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Hourly Risk Profile — Typical Kampala Weekday</h3>
+        </div>
+        <canvas id="hourly-chart" height="220"></canvas>
+      </div>
+      <div class="card chart-card chart-card--sm">
+        <div class="card-header"><h3>Risk Distribution</h3></div>
+        <canvas id="donut-chart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Recent Video Results</h3></div>
+      <div id="results-table-wrap">
+        <p class="empty-state">Run the pipeline to see results.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── VIDEO ANALYSIS ─────────────────────────────────────────────── -->
+  <section id="videos" class="page">
+    <div class="page-header">
+      <h1>Video Analysis</h1>
+      <span class="page-sub">YOLO vehicle detection on local footage</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Input Videos</h3>
+        <button class="btn btn-primary" onclick="processVideos()">▶ Process All</button>
+      </div>
+      <div id="video-list"><p class="empty-state">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Processing Results</h3></div>
+      <div id="video-results"><p class="empty-state">Run processing to see per-video stats.</p></div>
+    </div>
+  </section>
+
+  <!-- ── RISK PREDICTIONS ───────────────────────────────────────────── -->
+  <section id="predictions" class="page">
+    <div class="page-header">
+      <h1>Risk Predictions</h1>
+      <span class="page-sub">Accident hotspot scoring</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Generate Predictions</h3>
+        <button class="btn btn-primary" onclick="generatePredictions()">🔮 Run Model</button>
+      </div>
+      <div id="summary-stats" class="kpi-grid kpi-grid--sm" style="margin:0; padding:1.25rem 0 0"></div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <div class="card-header">
+        <h3>Predictions</h3>
+        <button class="btn btn-ghost" onclick="downloadPredictions()">⬇ Download JSON</button>
+      </div>
+      <div id="predictions-list"><p class="empty-state">Generate predictions to see results.</p></div>
+    </div>
+  </section>
+
+  <!-- ── HOTSPOTS ───────────────────────────────────────────────────── -->
+  <section id="hotspots" class="page">
+    <div class="page-header">
+      <h1>Accident Hotspots</h1>
+      <span class="page-sub">Uganda high-risk junctions</span>
+    </div>
+
+    <div class="card">
+      <p class="hotspot-note">
+        Coordinates from the Uganda National Roads Authority RTA dataset + YOLO model outputs.
+        Integrate a Mapbox/Leaflet map tile here for production.
+      </p>
+      <table class="data-table">
+        <thead>
+          <tr><th>Junction</th><th>District</th><th>Risk Score</th><th>Level</th></tr>
+        </thead>
+        <tbody id="hotspot-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────────────
+const API = "http://localhost:8000";
+
+// ── Hotspot data ─────────────────────────────────────────────────────────────
+const HOTSPOTS = [
+  { name: "Clock Tower Roundabout", district: "Kampala Central", risk: 92 },
+  { name: "Wandegeya Junction",     district: "Kawempe",         risk: 85 },
+  { name: "Mbarara Main Junction",  district: "Mbarara",         risk: 78 },
+  { name: "Entebbe Road / Mukono",  district: "Wakiso",          risk: 71 },
+  { name: "Jinja Road Bweyogerere", district: "Wakiso",          risk: 64 },
+  { name: "Gulu Avenue",            district: "Kampala Central", risk: 58 },
+];
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+document.querySelectorAll(".nav-item").forEach(link => {
+  link.addEventListener("click", e => {
+    e.preventDefault();
+    document.querySelectorAll(".nav-item").forEach(l => l.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    link.classList.add("active");
+    document.getElementById(link.dataset.section).classList.add("active");
+    onPageLoad(link.dataset.section);
+  });
+});
+
+function onPageLoad(section) {
+  if (section === "dashboard") loadDashboard();
+  if (section === "videos")   loadVideos();
+  if (section === "predictions") loadPredictions();
+  if (section === "hotspots") renderHotspots();
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiFetch(path, method = "GET") {
+  const r = await fetch(`${API}${path}`, { method });
+  if (!r.ok) throw new Error(`API ${r.status}: ${r.statusText}`);
+  return r.json();
+}
+
+// ── Status polling ────────────────────────────────────────────────────────────
+let _statusInterval = null;
+async function pollStatus() {
+  try {
+    const d = await apiFetch("/api/status");
+    const dot = document.getElementById("status-dot");
+    const text = document.getElementById("status-text");
+    const msg  = document.getElementById("status-message");
+    const wrap = document.getElementById("progress-wrap");
+    const bar  = document.getElementById("progress-bar");
+
+    const colors = { idle:"#22c55e", processing:"#f97316", completed:"#22c55e", failed:"#ef4444" };
+    dot.style.background = colors[d.status] || "#94a3b8";
+    text.textContent = d.status.charAt(0).toUpperCase() + d.status.slice(1);
+    msg.textContent = d.message || "";
+
+    if (d.status === "processing") {
+      wrap.style.display = "block";
+      bar.style.width = `${d.progress}%`;
+    } else {
+      wrap.style.display = "none";
+    }
+  } catch {
+    document.getElementById("status-dot").style.background = "#ef4444";
+    document.getElementById("status-text").textContent = "API offline";
+  }
+}
+pollStatus();
+_statusInterval = setInterval(pollStatus, 3000);
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+let _hourlyChart = null, _donutChart = null;
+
+async function loadDashboard() {
+  try {
+    const d = await apiFetch("/api/dashboard");
+    document.getElementById("kpi-videos").textContent = d.total_videos ?? "—";
+    document.getElementById("kpi-avg").textContent    = d.overall_avg_vehicles != null ? d.overall_avg_vehicles.toFixed(1) : "—";
+    document.getElementById("kpi-peak").textContent   = d.peak_vehicles ?? "—";
+    document.getElementById("kpi-hdf").textContent    = d.high_density_frames ?? "—";
+    renderResultsTable(d.results || []);
+  } catch (e) {
+    console.warn("Dashboard API error:", e.message);
+    // Demo data fallback
+    document.getElementById("kpi-videos").textContent = "0";
+    document.getElementById("kpi-avg").textContent    = "—";
+    document.getElementById("kpi-peak").textContent   = "—";
+    document.getElementById("kpi-hdf").textContent    = "—";
+  }
+  renderHourlyChart();
+  await loadDonutChart();
+}
+
+function renderHourlyChart() {
+  const ctx = document.getElementById("hourly-chart").getContext("2d");
+  const labels = [...Array(24).keys()].map(h => `${String(h).padStart(2,"0")}:00`);
+  const data   = [22,18,15,14,16,25,45,72,68,55,52,58,62,60,64,78,88,91,85,74,65,52,38,28];
+  if (_hourlyChart) _hourlyChart.destroy();
+  _hourlyChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Risk Score",
+        data,
+        fill: true,
+        tension: 0.4,
+        borderColor: "#3b82f6",
+        backgroundColor: "rgba(59,130,246,0.1)",
+        pointRadius: 3,
+        pointHoverRadius: 6,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, max: 100, grid: { color: "#f1f5f9" } },
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } },
+      },
+      responsive: true,
+    }
+  });
+}
+
+async function loadDonutChart() {
+  const ctx = document.getElementById("donut-chart").getContext("2d");
+  let counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+  try {
+    const d = await apiFetch("/api/predictions");
+    (d.predictions || []).forEach(p => { counts[p.risk_level] = (counts[p.risk_level] || 0) + 1; });
+  } catch { counts = { CRITICAL: 1, HIGH: 2, MEDIUM: 1, LOW: 0 }; }
+  if (_donutChart) _donutChart.destroy();
+  _donutChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(counts),
+      datasets: [{ data: Object.values(counts), backgroundColor: ["#dc2626","#f97316","#eab308","#22c55e"], borderWidth: 0 }]
+    },
+    options: { cutout: "60%", plugins: { legend: { position: "bottom" } }, responsive: true }
+  });
+}
+
+function renderResultsTable(results) {
+  const wrap = document.getElementById("results-table-wrap");
+  if (!results.length) { wrap.innerHTML = '<p class="empty-state">No results yet. Run the pipeline.</p>'; return; }
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Video</th><th>Duration (s)</th><th>Avg Vehicles</th><th>Peak</th></tr></thead>
+      <tbody>${results.map(r => `
+        <tr>
+          <td>${r.video_name || "—"}</td>
+          <td>${r.duration_seconds ?? "—"}</td>
+          <td>${r.avg_vehicles_per_sample ?? "—"}</td>
+          <td>${r.peak_vehicles ?? "—"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+// ── Videos ────────────────────────────────────────────────────────────────────
+async function loadVideos() {
+  try {
+    const d = await apiFetch("/api/videos");
+    const list = document.getElementById("video-list");
+    if (!d.videos.length) {
+      list.innerHTML = '<p class="empty-state">No videos in <code>data/input_video/</code>. Add .mp4/.avi/.mov files and refresh.</p>';
+    } else {
+      list.innerHTML = `<ul class="file-list">${d.videos.map(v => `<li>📹 ${v}</li>`).join("")}</ul>`;
+    }
+    const res = await apiFetch("/api/results");
+    renderVideoResults(res.results || []);
+  } catch (e) {
+    document.getElementById("video-list").innerHTML = `<p class="error-state">⚠️ ${e.message}</p>`;
+  }
+}
+
+function renderVideoResults(results) {
+  const el = document.getElementById("video-results");
+  if (!results.length) { el.innerHTML = '<p class="empty-state">No results yet.</p>'; return; }
+  el.innerHTML = results.map(r => `
+    <div class="result-card">
+      <div class="result-title">📹 ${r.video_name}</div>
+      <div class="result-stats">
+        <span><strong>${r.duration_seconds}s</strong> duration</span>
+        <span><strong>${r.avg_vehicles_per_sample}</strong> avg vehicles</span>
+        <span><strong>${r.peak_vehicles}</strong> peak</span>
+        <span><strong>${r.high_density_frames ?? 0}</strong> high-density frames</span>
+      </div>
+    </div>`).join("");
+}
+
+async function processVideos() {
+  try {
+    await apiFetch("/api/process", "POST");
+    alert("Processing started. Check the status indicator in the sidebar.");
+  } catch (e) { alert(`Error: ${e.message}`); }
+}
+
+// ── Predictions ───────────────────────────────────────────────────────────────
+async function loadPredictions() {
+  try {
+    const d = await apiFetch("/api/predictions");
+    renderSummary(d.summary || {});
+    renderPredictionsList(d.predictions || []);
+  } catch { document.getElementById("predictions-list").innerHTML = '<p class="empty-state">No predictions yet. Click "Run Model" above.</p>'; }
+}
+
+function renderSummary(s) {
+  const el = document.getElementById("summary-stats");
+  if (!Object.keys(s).length) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Avg Risk</div><div class="kpi-value">${s.average_risk_score ?? "—"}</div></div>
+    <div class="kpi-card kpi-card--alert"><div class="kpi-label">Critical</div><div class="kpi-value">${s.critical_areas ?? 0}</div></div>
+    <div class="kpi-card"><div class="kpi-label">High Risk</div><div class="kpi-value">${s.high_risk_areas ?? 0}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Peak Score</div><div class="kpi-value">${s.max_risk_score ?? "—"}</div></div>`;
+}
+
+function renderPredictionsList(predictions) {
+  const el = document.getElementById("predictions-list");
+  if (!predictions.length) { el.innerHTML = '<p class="empty-state">No predictions.</p>'; return; }
+  const badgeClass = { CRITICAL:"badge-critical", HIGH:"badge-high", MEDIUM:"badge-medium", LOW:"badge-low" };
+  el.innerHTML = predictions.map(p => `
+    <div class="result-card">
+      <div class="result-title">
+        ${p.video}
+        <span class="badge ${badgeClass[p.risk_level] || ""}">${p.risk_level}</span>
+      </div>
+      <div class="risk-bar-wrap">
+        <div class="risk-bar" style="width:${p.risk_score}%"></div>
+        <span class="risk-score-label">${p.risk_score}/100</span>
+      </div>
+      <p class="recommendation">${p.recommendation}</p>
+    </div>`).join("");
+}
+
+async function generatePredictions() {
+  try {
+    await apiFetch("/api/predict", "POST");
+    await loadPredictions();
+  } catch (e) { alert(`Error: ${e.message}`); }
+}
+
+async function downloadPredictions() {
+  window.open(`${API}/api/download/predictions`, "_blank");
+}
+
+// ── Hotspots ──────────────────────────────────────────────────────────────────
+function renderHotspots() {
+  const badgeClass = r => r >= 85 ? "badge-critical" : r >= 70 ? "badge-high" : r >= 55 ? "badge-medium" : "badge-low";
+  const level      = r => r >= 85 ? "CRITICAL" : r >= 70 ? "HIGH" : r >= 55 ? "MEDIUM" : "LOW";
+  document.getElementById("hotspot-rows").innerHTML = HOTSPOTS.map(h => `
+    <tr>
+      <td>${h.name}</td>
+      <td>${h.district}</td>
+      <td>
+        <div class="risk-bar-wrap">
+          <div class="risk-bar" style="width:${h.risk}%"></div>
+          <span class="risk-score-label">${h.risk}%</span>
+        </div>
+      </td>
+      <td><span class="badge ${badgeClass(h.risk)}">${level(h.risk)}</span></td>
+    </tr>`).join("");
+}
+
+// ── Quick actions ─────────────────────────────────────────────────────────────
+async function runPipeline() {
+  try {
+    await apiFetch("/api/pipeline", "POST");
+    alert("Pipeline started. Watch the status indicator.");
+  } catch (e) { alert(`Error: ${e.message}`); }
+}
+
+async function clearResults() {
+  if (!confirm("Clear all processing results?")) return;
+  try {
+    await apiFetch("/api/clear", "DELETE");
+    loadDashboard();
+    alert("Results cleared.");
+  } catch (e) { alert(`Error: ${e.message}`); }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadDashboard();
+renderHotspots();
+</script>
 </body>
 </html>

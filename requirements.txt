@@ -1,39 +1,53 @@
-# Traffic Sentinel - Root Level Dependencies (MVP)
-# Focused on video processing + ML for Uganda traffic data
+# ═══════════════════════════════════════════════════════════════════
+# Traffic Sentinel — Full Requirements
+# Pinned for reproducibility. Use requirements-minimal.txt
+# if bandwidth is limited (skips dev/viz extras).
+# ═══════════════════════════════════════════════════════════════════
 
-# Core dependencies
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn>=1.3.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
+# ── Core scientific computing ───────────────────────────────────────
+numpy==1.26.4
+pandas==2.2.2
+scipy==1.13.0
 
-# Computer Vision (Critical for your input_video folder)
-opencv-python>=4.8.0
-Pillow>=10.0.0
+# ── Computer Vision ─────────────────────────────────────────────────
+opencv-python-headless==4.9.0.80  # headless = no GUI dep, smaller
+Pillow==10.3.0
 
-# API & Backend Framework
-fastapi>=0.104.0
-uvicorn>=0.24.0
-python-multipart>=0.0.6
+# ── Vehicle Detection (YOLO) ─────────────────────────────────────────
+ultralytics==8.2.18               # YOLOv8 — vehicle detection backbone
 
-# Data handling & API
-json5>=0.9.0
-tqdm>=4.65.0
+# ── FastAPI backend ──────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0         # includes httptools, uvloop
+python-multipart==0.0.9           # file uploads
+pydantic==2.7.1
+pydantic-settings==2.2.1          # .env / environment config
 
-# YOLO / Advanced detection
-ultralytics>=8.0.0  # For vehicle detection
+# ── Streamlit dashboard ───────────────────────────────────────────────
+streamlit==1.35.0
+plotly==5.22.0
+altair==5.3.0
 
-# Utils
-python-dotenv>=1.0.0
-joblib>=1.3.0
-requests>=2.31.0
-pydantic>=2.0.0
+# ── Data visualisation (CLI / notebooks) ─────────────────────────────
+matplotlib==3.8.4
+seaborn==0.13.2
 
-# Development & Testing
-pytest>=7.4.0
-black>=23.0.0
-flake8>=6.0.0
+# ── Machine learning extras ──────────────────────────────────────────
+scikit-learn==1.5.0
 
-# Frontend (optional)
-streamlit>=1.28.0
+# ── HTTP / networking ─────────────────────────────────────────────────
+requests==2.32.3
+httpx==0.27.0                     # async HTTP client (tests / API calls)
+
+# ── Utilities ────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+tqdm==4.66.4
+joblib==1.4.2
+
+# ── Development & testing ─────────────────────────────────────────────
+pytest==8.2.0
+pytest-asyncio==0.23.6
+httpx==0.27.0                     # used by FastAPI TestClient
+black==24.4.2
+ruff==0.4.4                       # fast linter (replaces flake8)
+mypy==1.10.0
