@@ -1,64 +1,133 @@
-# Traffic Sentinel - Configuration File
-# Optimized for Uganda MVP (Deadline: 31 May 2026)
+# ═══════════════════════════════════════════════════════════════════
+# Traffic Sentinel — Configuration File
+# All values here are defaults; override via environment variables
+# or the .env file (env vars always win).
+# ═══════════════════════════════════════════════════════════════════
 
-# Project Settings
 project:
-  name: "Traffic Sentinel"
-  version: "0.1.0-mvp"
-  description: "Uganda Traffic Risk Prediction using Local Videos"
-  author: "Keith Ndiema Kissa"
-  location_focus: "Kampala & Mbarara"
+  name:            "Traffic Sentinel"
+  version:         "1.1.0"
+  description:     "AI-powered road safety intelligence for Uganda's urban junctions"
+  author:          "Keith Ndiema Kissa"
+  contact:         "2025BCS101@std.must.ac.ug"
+  location_focus:  "Kampala & Mbarara, Uganda"
 
-# Paths (Relative to project root)
+# ── Paths (relative to project root) ────────────────────────────
 paths:
-  input_video: "data/input_video"
+  input_video:    "data/input_video"
   output_results: "data/output_results"
   sample_framing: "data/sample_framing"
-  models: "models"
-  frontend: "frontend"
-  logs: "logs"
+  raw_csvs:       "data/raw_csvs"
+  models:         "models"
+  frontend:       "frontend"
+  logs:           "logs"
+  docs:           "docs"
 
-# Video Processing Settings
+# ── API ──────────────────────────────────────────────────────────
+api:
+  host:      "0.0.0.0"
+  port:      8000
+  reload:    true          # set false in production
+  workers:   1             # increase to match CPU count in production
+  log_level: "info"
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8501"
+    - "http://localhost:8000"
+
+# ── Dashboard (Streamlit) ────────────────────────────────────────
+dashboard:
+  port:      8501
+  title:     "Traffic Sentinel"
+  theme:     "dark"
+
+# ── YOLO / Computer Vision ───────────────────────────────────────
+yolo:
+  model:           "yolov8n.pt"   # n=nano, s=small, m=medium
+  confidence:      0.50
+  iou_threshold:   0.45
+  device:          "cpu"          # "cpu" | "0" (first GPU)
+  # COCO class IDs to treat as vehicles
+  vehicle_classes:
+    2: "car"
+    3: "motorcycle"
+    5: "bus"
+    7: "truck"
+
+# ── Video Processing ─────────────────────────────────────────────
 video:
-  supported_formats: [".mp4", ".avi", ".mov"]
-  frame_sample_rate: 30          # Process every Nth frame
-  save_sample_frames: true
-  max_duration_minutes: 30       # Safety limit for MVP
+  supported_formats:     [".mp4", ".avi", ".mov", ".mkv"]
+  sample_interval:       30      # process every Nth frame
+  frame_save_interval:   90      # save a sample frame every Nth frame
+  max_duration_minutes:  30      # safety cap — skip longer videos
 
-# Risk Prediction Settings (Uganda Context)
+# ── Risk Scoring ─────────────────────────────────────────────────
 risk:
   thresholds:
-    low: 40
-    medium: 70
-    high: 85
-  factors:
-    vehicle_density: 0.45
-    time_of_day: 0.30
-    location_risk: 0.25
-  night_risk_multiplier: 1.35     # Higher risk after 6 PM in Kampala
+    critical: 85
+    high:     65
+    medium:   40
+    low:       0
 
-# Model Settings
-model:
-  type: "random_forest"           # Can change to xgboost later
-  version: "v1_mvp"
-  random_state: 42
-  test_size: 0.2
+  # Traffic density → score contribution (out of 40)
+  vehicle_score:
+    high:   40    # avg >= high_traffic_threshold
+    medium: 25    # avg >= medium_traffic_threshold
+    low:    12    # avg >= 6
+    none:    4    # < 6
 
-# Uganda-specific defaults
+  # Peak vehicle count → score contribution (out of 20)
+  peak_score:
+    very_high: 20   # peak >= 30
+    high:      12   # peak >= 20
+    medium:     6   # peak >= 12
+
+  # High-density frame bonus: min(25, hdf × 2)
+  hdf_multiplier: 2
+  hdf_cap:        25
+
+  # Time-of-day bonuses
+  thresholds_vehicles:
+    high:   20
+    medium: 12
+
+  night_bonus:     20   # 22:00 – 05:59
+  rush_hour_bonus: 15   # 06:00 – 07:59 and 17:00 – 21:59
+
+# ── Uganda-specific context ───────────────────────────────────────
 uganda:
   default_city: "Kampala"
   peak_hours:
-    morning: ["07:00", "10:00"]
-    evening: ["17:00", "21:00"]
-  high_risk_vehicles: ["boda", "matatu"]
+    morning: ["07:00", "09:00"]
+    evening: ["17:00", "20:00"]
+  high_risk_vehicle_types: ["motorcycle", "bus"]   # boda-boda, matatus
+  known_junctions:
+    clock_tower_roundabout:
+      name: "Clock Tower Roundabout"
+      lat:  0.3131
+      lon:  32.5811
+    wandegeya:
+      name: "Wandegeya Junction"
+      lat:  0.3437
+      lon:  32.5683
+    mbarara_main:
+      name: "Mbarara Main Junction"
+      lat:  -0.6123
+      lon:  29.7597
+    entebbe_road:
+      name: "Entebbe Road Junction"
+      lat:  0.2164
+      lon:  32.4397
 
-# Logging
+# ── Logging ──────────────────────────────────────────────────────
 logging:
-  level: "INFO"
-  format: "%(asctime)s - %(levelname)s - %(message)s"
+  level:   "INFO"
+  to_file: false
+  file:    "logs/traffic_sentinel.log"
+  format:  "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 
-# Future API / Dashboard
-api:
-  host: "0.0.0.0"
-  port: 8000
-  debug: true
+# ── Docker ───────────────────────────────────────────────────────
+docker:
+  backend_image:   "traffic-sentinel-backend"
+  dashboard_image: "traffic-sentinel-dashboard"
+  network:         "ts_network"
