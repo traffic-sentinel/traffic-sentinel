@@ -1,0 +1,78 @@
+# ═══════════════════════════════════════════════════════════════════
+# Traffic Sentinel — Docker Compose
+# Usage:
+#   docker compose up --build          # full stack
+#   docker compose up backend          # API only
+#   docker compose up dashboard        # Streamlit only
+# ═══════════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+services:
+
+  # ── FastAPI Backend ─────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ts_backend
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_RELOAD=${API_RELOAD:-false}
+      - API_WORKERS=${API_WORKERS:-2}
+      - YOLO_MODEL=${YOLO_MODEL:-yolov8n.pt}
+      - YOLO_CONFIDENCE=${YOLO_CONFIDENCE:-0.5}
+      - YOLO_DEVICE=${YOLO_DEVICE:-cpu}
+      - VIDEO_SAMPLE_INTERVAL=${VIDEO_SAMPLE_INTERVAL:-30}
+      - HIGH_TRAFFIC_THRESHOLD=${HIGH_TRAFFIC_THRESHOLD:-20}
+      - MEDIUM_TRAFFIC_THRESHOLD=${MEDIUM_TRAFFIC_THRESHOLD:-12}
+      - HIGH_RISK_HOUR_BONUS=${HIGH_RISK_HOUR_BONUS:-15}
+      - NIGHT_RISK_BONUS=${NIGHT_RISK_BONUS:-20}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CORS_ORIGINS=["http://localhost:8501","http://localhost:3000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Streamlit Dashboard ─────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ts_dashboard
+    restart: unless-stopped
+    ports:
+      - "${UI_PORT:-8501}:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      - API_HOST=backend
+      - API_PORT=8000
+      - YOLO_MODEL=${YOLO_MODEL:-yolov8n.pt}
+      - YOLO_DEVICE=${YOLO_DEVICE:-cpu}
+    command: >
+      streamlit run backend/app/app.py
+        --server.port 8501
+        --server.address 0.0.0.0
+        --server.headless true
+        --browser.gatherUsageStats false
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  data:
+  models:
+  logs:
