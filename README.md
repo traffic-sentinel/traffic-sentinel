@@ -228,7 +228,7 @@ Traffic Sentinel directly supports Uganda's **National Road Safety Strategic Pla
 
 ## Built by a team of 4
 
-1. Ahereza Nobert - Mbarara University of SCience & Technology (MUST)
+1. Ahereza Nobert - Mbarara University of Science & Technology (MUST)
 2. Keith Ndiema Kissa - Mbarara University of Science & Technology (MUST) 
 3. Kweko Daniel - Makerere University (MUK)
 4. Egabo Aaron - Cavendish University (CUU)
